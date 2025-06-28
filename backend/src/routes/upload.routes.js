@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const supabase = require('../config/supabase');
+const auth = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -53,10 +54,11 @@ const upload = multer({
 
 /**
  * @route POST /api/upload
- * @description Upload a file to analyze for question generation
- * @access Private (should be protected)
+ * @description Upload a file to Supabase storage and save reference in DB
+ * @access Private
  */
-router.post('/', upload.single('file'), async (req, res) => {
+router.post(
+  '/', auth, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ errors: [{ msg: 'No file uploaded' }] });

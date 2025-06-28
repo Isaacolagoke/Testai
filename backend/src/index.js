@@ -21,15 +21,19 @@ app.get('/api/health', (req, res) => {
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
-// const testRoutes = require('./routes/test.routes');
+const testRoutes = require('./routes/test.routes');
 const uploadRoutes = require('./routes/upload.routes');
-// const aiRoutes = require('./routes/ai.routes');
+const aiRoutes = require('./routes/ai.routes');
+const learnerRoutes = require('./routes/learner.routes');
+const questionRoutes = require('./routes/question.routes');
 
 // Register routes
 app.use('/api/auth', authRoutes);
-// app.use('/api/tests', testRoutes);
+app.use('/api/tests', testRoutes);
 app.use('/api/upload', uploadRoutes);
-// app.use('/api/ai', aiRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/learner', learnerRoutes);
+app.use('/api/questions', questionRoutes);
 
 // Error handler middleware
 app.use((err, req, res, next) => {

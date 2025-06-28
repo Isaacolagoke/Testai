@@ -1,13 +1,13 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const bcrypt = require('bcrypt');
 const supabase = require('../config/supabase');
+const auth = require('../middleware/auth');
 
 const router = express.Router();
 
 /**
  * @route POST /api/auth/signup
- * @description Register a new tutor
+ * @description Register a new tutor using Supabase Auth
  * @access Public
  */
 router.post(
@@ -38,39 +38,31 @@ router.post(
     const { name, email, password } = req.body;
 
     try {
-      // Check if user already exists
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .single();
+      // Sign up with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name
+          }
+        }
+      });
 
-      if (existingUser) {
-        return res.status(400).json({ errors: [{ msg: 'User already exists' }] });
+      if (authError) {
+        console.error('Supabase Auth signup error:', authError);
+        return res.status(400).json({ 
+          errors: [{ msg: authError.message || 'Failed to create account' }] 
+        });
       }
 
-      // Hash password
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-
-      // Create user in Supabase
-      const { data: newUser, error } = await supabase
-        .from('users')
-        .insert([
-          { name, email, password: hashedPassword }
-        ])
-        .select();
-
-      if (error) {
-        console.error('Error creating user:', error);
-        return res.status(500).json({ errors: [{ msg: 'Server error' }] });
-      }
-
-      // Return user without password
-      delete newUser[0].password;
-      return res.status(201).json(newUser[0]);
+      // Return user data and session
+      return res.status(201).json({
+        user: authData.user,
+        session: authData.session
+      });
     } catch (err) {
-      console.error(err.message);
+      console.error('Server error during signup:', err);
       res.status(500).json({ errors: [{ msg: 'Server error' }] });
     }
   }
@@ -78,7 +70,7 @@ router.post(
 
 /**
  * @route POST /api/auth/login
- * @description Authenticate user & get token
+ * @description Authenticate user & get session token using Supabase Auth
  * @access Public
  */
 router.post(
@@ -97,28 +89,26 @@ router.post(
     const { email, password } = req.body;
 
     try {
-      // Check if user exists
-      const { data: user, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .single();
+      // Sign in with Supabase Auth
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
 
-      if (error || !user) {
-        return res.status(400).json({ errors: [{ msg: 'Invalid credentials' }] });
+      if (error) {
+        console.error('Login error:', error.message);
+        return res.status(400).json({ 
+          errors: [{ msg: 'Invalid credentials' }] 
+        });
       }
 
-      // Compare password
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) {
-        return res.status(400).json({ errors: [{ msg: 'Invalid credentials' }] });
-      }
-
-      // Return user without password
-      delete user.password;
-      return res.status(200).json(user);
+      // Return user and session data
+      return res.status(200).json({
+        user: data.user,
+        session: data.session
+      });
     } catch (err) {
-      console.error(err.message);
+      console.error('Server error during login:', err);
       res.status(500).json({ errors: [{ msg: 'Server error' }] });
     }
   }
@@ -126,13 +116,39 @@ router.post(
 
 /**
  * @route POST /api/auth/logout
- * @description Logout user
- * @access Public
+ * @description Logout user by invalidating Supabase session
+ * @access Private
  */
-router.post('/logout', (req, res) => {
-  // In a token-based authentication system, the client should discard the token
-  // Here we just send a successful response
-  res.status(200).json({ msg: 'Logged out successfully' });
+router.post('/logout', auth, async (req, res) => {
+  try {
+    // Sign out from Supabase
+    const { error } = await supabase.auth.signOut();
+    
+    if (error) {
+      console.error('Logout error:', error);
+      return res.status(500).json({ errors: [{ msg: 'Error during logout' }] });
+    }
+    
+    res.status(200).json({ msg: 'Logged out successfully' });
+  } catch (err) {
+    console.error('Server error during logout:', err);
+    res.status(500).json({ errors: [{ msg: 'Server error' }] });
+  }
+});
+
+/**
+ * @route GET /api/auth/user
+ * @description Get current authenticated user data
+ * @access Private
+ */
+router.get('/user', auth, async (req, res) => {
+  try {
+    // The user is already attached to the request by the auth middleware
+    res.status(200).json({ user: req.user });
+  } catch (err) {
+    console.error('Error fetching user data:', err);
+    res.status(500).json({ errors: [{ msg: 'Server error' }] });
+  }
 });
 
 module.exports = router;
